@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>새 사무실 평면도 (실측 반영)</title>
 <style>
   body {
@@ -11,9 +12,22 @@
   }
   h1 { font-size: 20px; margin: 0 0 4px; }
   .sub { color: #666; font-size: 13px; margin-bottom: 8px; }
-  .controls { font-size: 13px; margin-bottom: 8px; }
-  .plan-card { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); padding: 12px; }
+  .controls { font-size: 13px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .plan-card { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); padding: 12px; overflow-x: auto; }
   svg { width: 100%; height: auto; display: block; }
+  .mobile-hint { display: none; font-size: 12px; color: #777; margin-bottom: 6px; }
+
+  /* 폰: 도면을 글자가 읽히는 고정 폭으로 그리고 좌우로 밀어서 봄 */
+  @media (max-width: 700px) {
+    body { padding: 10px; }
+    h1 { font-size: 17px; }
+    .controls { font-size: 15px; }
+    .controls label { padding: 6px 0; }
+    .controls input { width: 18px; height: 18px; vertical-align: middle; }
+    .plan-card { padding: 4px; }
+    .mobile-hint { display: block; }
+    .info { grid-template-columns: 1fr; }
+  }
   .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
   .info section { background: #fff; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); font-size: 13px; line-height: 1.6; }
   .info h2 { font-size: 15px; margin: 0 0 8px; }
@@ -35,6 +49,7 @@
   &nbsp;&nbsp;<label><input type="checkbox" id="portrait"> 세로로 보기</label>
 </div>
 
+<div class="mobile-hint">도면은 좌우로 밀어서 보세요. 두 손가락으로 확대할 수 있습니다.</div>
 <div class="plan-card"><svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg></div>
 
 <div class="info">
@@ -385,6 +400,8 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     return node;
   }
 
+  const isNarrowScreen = window.matchMedia("(max-width: 700px)");
+
   function render({ balconyExpanded, portrait, showFurniture, showCeiling, sixDesks }) {
     const layout = buildOfficeLayout({ balconyExpanded, staffDeskCount: sixDesks ? 6 : 4 });
     const measured = layout.measured;
@@ -406,7 +423,15 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     const [bx, by] = toScreen(roomBounds.xMax, roomBounds.yMax);
     const view = { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay) };
     svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
-    svg.style.maxWidth = portrait ? "760px" : "none";
+    // 넓은 화면: 카드 폭에 맞춤 (세로 보기는 너무 길어지지 않게 760px 까지)
+    // 폰: 글자가 약 12px 로 보이는 고정 폭 (세로 800px, 가로 1600px) 으로 그리고 가로 스크롤
+    if (isNarrowScreen.matches) {
+      svg.style.width = portrait ? "800px" : "1600px";
+      svg.style.maxWidth = "none";
+    } else {
+      svg.style.width = "100%";
+      svg.style.maxWidth = portrait ? "760px" : "none";
+    }
 
     // 레이어: shapes 는 방 좌표계, texts 는 화면 좌표계 (글자를 똑바로 세우기 위해)
     const createLayer = () => ({ shapes: el("g", { transform: shapeTransform }, svg), texts: null });
@@ -720,7 +745,10 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     return state;
   }
 
-  // URL 해시로 초기 상태 지정 가능: #portrait=1&balcony-expanded=1
+  // 폰에서는 세로 보기가 기본 (방이 길쭉해서 화면 방향과 맞음)
+  if (isNarrowScreen.matches) document.getElementById(TOGGLES.portrait).checked = true;
+
+  // URL 해시로 초기 상태 지정 가능: #portrait=1&balcony-expanded=1 (폰 기본값보다 우선)
   const hashParams = new URLSearchParams(location.hash.slice(1));
   for (const id of Object.values(TOGGLES)) {
     if (hashParams.has(id)) document.getElementById(id).checked = hashParams.get(id) === "1";
@@ -729,6 +757,7 @@ const OFFICE_LAYOUT = buildOfficeLayout();
   for (const id of Object.values(TOGGLES)) {
     document.getElementById(id).addEventListener("change", () => render(readState()));
   }
+  isNarrowScreen.addEventListener("change", () => render(readState()));
   render(readState());
 })();
 </script>
