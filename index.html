@@ -76,7 +76,7 @@
       <tr><td><span class="dot" style="background:#3a86c8"></span>배수</td><td>배수호스</td><td>출입문 벽에서 300, 현관문에서 700</td></tr>
       <tr><td>-</td><td>분전반 + 통신단자함</td><td>출입문 벽, 오른쪽에서 610~1,220, 높이 650~1,850</td></tr>
       <tr><td>S</td><td>스위치 / 에어컨 컨트롤</td><td>높이 1,240 / 1,450</td></tr>
-      <tr><td>-</td><td>현관문</td><td>폭 1,000 × 높이 2,150, 왼쪽 벽에서 약 200, 안쪽으로 열림</td></tr>
+      <tr><td>-</td><td>현관문</td><td>폭 1,000 × 높이 2,150, 왼쪽 벽에서 약 200, 바깥(복도)으로 열림</td></tr>
       <tr><td>점선</td><td>천장</td><td>등 10개(2줄), 에어컨 2대 (개수만 실측)</td></tr>
     </table>
   </section>
@@ -127,7 +127,8 @@ const COLUMN = {
   y: fromBalconyEdge(2050), h: 2800, // 발코니 끝에서 2,050부터, 입구에서 볼 때 오른쪽 벽
 };
 
-const ENTRANCE_DOOR = { x: 200, w: 1000, height: 2150, swing: "in" }; // 왼쪽 벽에서 약 200, 안쪽으로 열림
+// swing: "out" = 복도 쪽으로 열림, "in" = 실내 쪽으로 열림. 경첩은 왼쪽 벽 쪽
+const ENTRANCE_DOOR = { x: 200, w: 1000, height: 2150, swing: "out" }; // 왼쪽 벽에서 약 200
 const BALCONY_DOOR = { x: 150, w: 800 };
 
 // 바닥 콘센트: 왼쪽 벽에서 2,100, 입구부터 간격 2,400 / 2,400 / 2,700 / 3,200 (누적)
@@ -402,7 +403,7 @@ const OFFICE_LAYOUT = buildOfficeLayout();
   const BUILT_IN_KINDS = new Set(["panel"]);
 
   // 그림이 차지하는 방 좌표 범위 (치수선/스케일바 여백 포함)
-  const MARGIN = { xMin: -1550, xMaxExtra: 2100, yMin: -3100, yMaxExtra: 1300 };
+  const MARGIN = { xMin: -1550, xMaxExtra: 2100, yMin: -3100, yMaxExtra: 1900 };
 
   function el(tag, attrs, parent) {
     const node = document.createElementNS(SVG_NS, tag);
@@ -562,7 +563,11 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     function drawDoors() {
       const entrance = layout.entranceDoor;
       rect(entrance.x, roomDepth - 5, entrance.w, wallThickness + 10, { fill: "#fbfaf7", stroke: "none" });
-      drawDoorSwing(entrance.x, roomDepth, entrance.x, roomDepth - entrance.w, entrance.x + entrance.w, roomDepth, 1);
+      // 바깥으로 열리면 경첩이 벽 바깥면에 있고 문짝이 복도 쪽으로 돌아감
+      const opensInward = entrance.swing === "in";
+      const hingeY = opensInward ? roomDepth : roomDepth + wallThickness;
+      const leafDirection = opensInward ? -1 : 1;
+      drawDoorSwing(entrance.x, hingeY, entrance.x, hingeY + leafDirection * entrance.w, entrance.x + entrance.w, hingeY, opensInward ? 1 : 0);
       text(entrance.x + entrance.w / 2 + 100, roomDepth - 450, `출입문 H${fmt(entrance.height)}`, { size: 100 });
 
       if (balconyExpanded) return;
@@ -665,7 +670,8 @@ const OFFICE_LAYOUT = buildOfficeLayout();
       chainWidth([0, column.x, roomWidth], balconyStart - 450);
       dimWidth(0, roomWidth, balconyStart - 1050, `전체 폭 ${fmt(roomWidth)}`);
 
-      chainWidth([0, door.x, door.x + door.w, terminalBox.x, terminalBox.x + terminalBox.w, roomWidth], roomDepth + 650);
+      // 문이 바깥으로 열리는 반경(1,000)보다 바깥에 치수선을 둠
+      chainWidth([0, door.x, door.x + door.w, terminalBox.x, terminalBox.x + terminalBox.w, roomWidth], roomDepth + wallThickness + door.w + 350);
 
       const drain = measured.drain;
       dimDepth(drain.y, roomDepth, drain.x + 350, fmt(roomDepth - drain.y));
