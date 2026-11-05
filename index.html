@@ -15,7 +15,11 @@
   .controls { font-size: 13px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
   .plan-card { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); padding: 12px; overflow-x: auto; }
   svg { width: 100%; height: auto; display: block; }
-  .mobile-hint { display: none; font-size: 12px; color: #777; margin-bottom: 6px; }
+  .zoom-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+  .zoom-bar button { min-width: 40px; height: 32px; border: 1px solid #999; background: #fff; border-radius: 4px; font-size: 15px; cursor: pointer; }
+  .zoom-bar button:disabled { color: #bbb; border-color: #ddd; }
+  #zoom-label { color: #555; min-width: 44px; }
+  .mobile-hint { display: none; font-size: 12px; color: #777; }
 
   /* 폰: 도면을 글자가 읽히는 고정 폭으로 그리고 좌우로 밀어서 봄 */
   @media (max-width: 700px) {
@@ -26,6 +30,7 @@
     .controls input { width: 18px; height: 18px; vertical-align: middle; }
     .plan-card { padding: 4px; }
     .mobile-hint { display: block; }
+    .zoom-bar button { min-width: 48px; height: 40px; font-size: 18px; }
     .info { grid-template-columns: 1fr; }
   }
   .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-top: 16px; }
@@ -49,7 +54,13 @@
   &nbsp;&nbsp;<label><input type="checkbox" id="portrait"> 세로로 보기</label>
 </div>
 
-<div class="mobile-hint">도면은 좌우로 밀어서 보세요. 두 손가락으로 확대할 수 있습니다.</div>
+<div class="zoom-bar">
+  <button type="button" id="zoom-out" aria-label="축소">-</button>
+  <button type="button" id="zoom-fit">전체 보기</button>
+  <button type="button" id="zoom-in" aria-label="확대">+</button>
+  <span id="zoom-label"></span>
+  <span class="mobile-hint">좌우로 밀어서 보기</span>
+</div>
 <div class="plan-card"><svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg></div>
 
 <div class="info">
@@ -423,15 +434,6 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     const [bx, by] = toScreen(roomBounds.xMax, roomBounds.yMax);
     const view = { x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax), h: Math.abs(by - ay) };
     svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
-    // 넓은 화면: 카드 폭에 맞춤 (세로 보기는 너무 길어지지 않게 760px 까지)
-    // 폰: 글자가 약 12px 로 보이는 고정 폭 (세로 800px, 가로 1600px) 으로 그리고 가로 스크롤
-    if (isNarrowScreen.matches) {
-      svg.style.width = portrait ? "800px" : "1600px";
-      svg.style.maxWidth = "none";
-    } else {
-      svg.style.width = "100%";
-      svg.style.maxWidth = portrait ? "760px" : "none";
-    }
 
     // 레이어: shapes 는 방 좌표계, texts 는 화면 좌표계 (글자를 똑바로 세우기 위해)
     const createLayer = () => ({ shapes: el("g", { transform: shapeTransform }, svg), texts: null });
@@ -728,7 +730,47 @@ const OFFICE_LAYOUT = buildOfficeLayout();
     setLayerVisible(furnitureLayer, showFurniture);
     setLayerVisible(roomOnlyDimLayer, !showFurniture);
     setLayerVisible(ceilingLayer, showCeiling);
+    applyZoom(portrait);
   }
+
+  // ---------- 확대 / 축소 ----------
+  // 브라우저 핀치 줌은 화면 폭 아래로 축소가 안 되므로 도면 폭을 직접 바꿈
+  // 1 = 전체 보기 (카드 폭에 맞춤). 폰은 글자가 읽히는 2배로 시작
+  const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
+  const DESKTOP_PORTRAIT_MAX_WIDTH = 760;
+  const planCard = document.querySelector(".plan-card");
+  let zoomLevel = isNarrowScreen.matches ? 2 : 1;
+  let currentPortrait = false;
+
+  function fitWidth(portrait) {
+    const style = getComputedStyle(planCard);
+    const inner = planCard.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return portrait && !isNarrowScreen.matches ? Math.min(inner, DESKTOP_PORTRAIT_MAX_WIDTH) : inner;
+  }
+
+  function applyZoom(portrait = currentPortrait) {
+    currentPortrait = portrait;
+    const centerRatio = (planCard.scrollLeft + planCard.clientWidth / 2) / planCard.scrollWidth;
+
+    svg.style.maxWidth = "none";
+    svg.style.width = `${fitWidth(portrait) * zoomLevel}px`;
+
+    planCard.scrollLeft = centerRatio * planCard.scrollWidth - planCard.clientWidth / 2;
+    document.getElementById("zoom-label").textContent = `${Math.round(zoomLevel * 100)}%`;
+    document.getElementById("zoom-out").disabled = zoomLevel === ZOOM_STEPS[0];
+    document.getElementById("zoom-in").disabled = zoomLevel === ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  }
+
+  function stepZoom(direction) {
+    const index = ZOOM_STEPS.indexOf(zoomLevel);
+    zoomLevel = ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1, Math.max(0, index + direction))];
+    applyZoom();
+  }
+
+  document.getElementById("zoom-in").addEventListener("click", () => stepZoom(1));
+  document.getElementById("zoom-out").addEventListener("click", () => stepZoom(-1));
+  document.getElementById("zoom-fit").addEventListener("click", () => { zoomLevel = 1; applyZoom(); });
+  window.addEventListener("resize", () => applyZoom());
 
   // ---------- 토글 ----------
   const TOGGLES = {
@@ -757,7 +799,10 @@ const OFFICE_LAYOUT = buildOfficeLayout();
   for (const id of Object.values(TOGGLES)) {
     document.getElementById(id).addEventListener("change", () => render(readState()));
   }
-  isNarrowScreen.addEventListener("change", () => render(readState()));
+  isNarrowScreen.addEventListener("change", () => {
+    zoomLevel = isNarrowScreen.matches ? 2 : 1;
+    render(readState());
+  });
   render(readState());
 })();
 </script>
